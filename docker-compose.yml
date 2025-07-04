@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: orchestrator-api
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=info
+      - CONFIG_PATH=/app/config/config.yaml
+    volumes:
+      # Mount config for runtime configuration changes
+      - ./config:/app/config:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - orchestrator-network
+
+  # Development variant with hot reload
+  orchestrator-dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: orchestrator-api-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=debug
+      - RELOAD=true
+      - CONFIG_PATH=/app/config/config.yaml
+    volumes:
+      # Mount source code for development hot reload
+      - .:/app
+      - /app/venv  # Exclude venv from volume mount
+    restart: unless-stopped
+    command: ["python", "main.py", "--reload", "--log-level", "debug"]
+    networks:
+      - orchestrator-network
+
+networks:
+  orchestrator-network:
+    driver: bridge 
