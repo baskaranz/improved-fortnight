@@ -49,13 +49,20 @@ The Orchestrator API is a FastAPI-based service that:
 - **Manages configuration** with hot-reloading and file watching
 - **Provides authentication passthrough** to backend services
 - **Offers comprehensive APIs** for management and monitoring
+- **Runs in containers** with Docker support for easy deployment
 
 ## 📋 System Requirements
 
+### Native Python Installation
 - Python 3.9+
 - FastAPI
 - HTTPX for async HTTP requests
 - YAML configuration support
+
+### Docker Installation (Recommended)
+- Docker Engine 20.10+
+- Docker Compose 2.0+
+- 2GB RAM minimum (4GB recommended)
 
 ## 📄 License
 
