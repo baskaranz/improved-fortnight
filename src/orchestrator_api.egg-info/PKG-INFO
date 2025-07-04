@@ -1,0 +1,186 @@
+Metadata-Version: 2.4
+Name: orchestrator-api
+Version: 0.1.0
+Summary: Python FastAPI Orchestrating Service
+Author-email: Orchestrator Team <team@example.com>
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.104.1
+Requires-Dist: uvicorn[standard]>=0.24.0
+Requires-Dist: pydantic>=2.5.0
+Requires-Dist: pydantic-settings>=2.1.0
+Requires-Dist: pyyaml>=6.0.1
+Requires-Dist: httpx>=0.25.2
+Requires-Dist: watchdog>=3.0.0
+Requires-Dist: python-jose[cryptography]>=3.3.0
+Requires-Dist: python-multipart>=0.0.6
+Requires-Dist: asyncio-mqtt>=0.16.1
+Requires-Dist: structlog>=23.2.0
+Requires-Dist: prometheus-client>=0.19.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4.3; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.1; extra == "dev"
+Requires-Dist: pytest-cov>=4.1.0; extra == "dev"
+Requires-Dist: black>=23.11.0; extra == "dev"
+Requires-Dist: flake8>=6.1.0; extra == "dev"
+Requires-Dist: mypy>=1.7.1; extra == "dev"
+Requires-Dist: httpx[dev]>=0.25.2; extra == "dev"
+Requires-Dist: pytest-mock>=3.12.0; extra == "dev"
+
+# FastAPI Orchestrating Service
+
+A scalable and extensible API gateway that dynamically routes requests to attached API endpoints based on configuration.
+
+## Features
+
+- **Dynamic Endpoint Management**: Register and unregister endpoints dynamically
+- **Configuration Management**: YAML-based configuration with hot reloading
+- **Health Monitoring**: Automatic health checks for registered endpoints
+- **Circuit Breaker**: Fault tolerance with configurable circuit breaker pattern
+- **Statistics & Monitoring**: Comprehensive metrics and monitoring capabilities
+- **Authentication**: JWT-based authentication for orchestrator APIs
+- **RESTful APIs**: Full REST API for management and monitoring
+
+## Quick Start
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd yet-another-orch-api
+```
+
+2. Install dependencies:
+```bash
+pip install -e .
+```
+
+### Running the Service
+
+1. Start the server:
+```bash
+python main.py
+```
+
+2. Or with custom configuration:
+```bash
+python main.py --config config/config.yaml --port 8000 --log-level info
+```
+
+3. For development with auto-reload:
+```bash
+python main.py --reload --log-level debug
+```
+
+### Configuration
+
+The service uses a YAML configuration file (default: `config/config.yaml`). Example:
+
+```yaml
+endpoints:
+  - url: "https://httpbin.org/get"
+    name: "httpbin_get"
+    version: "v1"
+    methods: ["GET"]
+    auth_type: "none"
+    disabled: false
+    timeout: 30
+
+circuit_breaker:
+  failure_threshold: 5
+  reset_timeout: 60
+  fallback_strategy: "error_response"
+
+health_check:
+  enabled: true
+  interval: 30
+  timeout: 10
+
+log_level: "INFO"
+metrics_enabled: true
+```
+
+## API Endpoints
+
+### Health Check
+- `GET /health` - Service health status
+
+### Configuration Management
+- `GET /config/status` - Configuration status
+- `POST /config/reload` - Reload configuration
+- `GET /config/endpoints` - List configured endpoints
+
+### Registry Management  
+- `GET /registry/endpoints` - List registered endpoints
+- `GET /registry/endpoints/{id}` - Get endpoint details
+- `POST /registry/endpoints` - Register new endpoint
+- `DELETE /registry/endpoints/{id}` - Unregister endpoint
+- `GET /registry/stats` - Registry statistics
+
+### Documentation
+- `GET /docs` - Interactive API documentation (Swagger UI)
+- `GET /redoc` - Alternative API documentation
+
+## Development
+
+### Running Tests
+
+```bash
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Run tests with coverage
+pytest --cov=src --cov-report=html
+```
+
+### Code Formatting
+
+```bash
+# Format code
+black src/ tests/
+
+# Check code style
+flake8 src/ tests/
+
+# Type checking
+mypy src/
+```
+
+## Project Structure
+
+```
+src/orchestrator/
+├── __init__.py          # Package initialization
+├── app.py              # FastAPI application factory
+├── config.py           # Configuration management
+├── models.py           # Pydantic models
+├── registry.py         # Endpoint registry
+├── config_api.py       # Configuration API endpoints
+└── registry_api.py     # Registry API endpoints
+
+tests/
+├── unit/               # Unit tests
+├── integration/        # Integration tests
+├── e2e/               # End-to-end tests
+└── utils/             # Test utilities
+
+config/
+└── config.yaml        # Configuration file
+```
+
+## Environment Variables
+
+- `CONFIG_PATH`: Path to configuration file (default: "config/config.yaml")
+- `HOST`: Host to bind to (default: "0.0.0.0")
+- `PORT`: Port to bind to (default: "8000")
+- `LOG_LEVEL`: Logging level (default: "INFO")
+- `RELOAD`: Enable auto-reload (default: "false")
+- `AUTH_SECRET_KEY`: JWT secret key for authentication
+
+## License
+
+MIT License
