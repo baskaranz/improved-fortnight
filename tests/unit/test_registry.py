@@ -3,6 +3,7 @@ Unit tests for endpoint registry.
 """
 
 import pytest
+import time
 from datetime import datetime
 from unittest.mock import Mock
 
@@ -242,7 +243,7 @@ class TestEndpointRegistry:
         
         # First record some failures
         endpoint.consecutive_failures = 3
-        endpoint.last_failure_time = datetime.now()
+        endpoint.last_failure_time = time.time()
         
         # Record success
         registry.record_success(endpoint_id)
@@ -258,7 +259,7 @@ class TestEndpointRegistry:
         endpoint = registry.register_endpoint(sample_endpoint_config)
         endpoint_id = endpoint.endpoint_id
         
-        now = datetime.now()
+        now = time.time()
         success = registry.update_health_check(endpoint_id, now)
         
         assert success is True

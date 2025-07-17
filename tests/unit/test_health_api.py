@@ -3,6 +3,7 @@ Tests for health monitoring API endpoints.
 """
 
 import pytest
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from fastapi import FastAPI, HTTPException
@@ -23,7 +24,7 @@ def mock_health_checker():
     sample_health = EndpointHealth(
         endpoint_id="test_endpoint",
         status=EndpointStatus.ACTIVE,
-        last_check_time=datetime.now(),
+        last_check_time=time.time(),
         response_time=0.05,
         error_message=None,
         consecutive_failures=0,
@@ -49,8 +50,8 @@ def mock_circuit_breaker_manager():
         "state": "closed",
         "failure_count": 0,
         "last_failure_time": None,
-        "last_success_time": datetime.now().isoformat(),
-        "state_changed_time": datetime.now().isoformat(),
+        "last_success_time": datetime.fromtimestamp(time.time()).isoformat() + 'Z',
+        "state_changed_time": datetime.fromtimestamp(time.time()).isoformat() + 'Z',
         "half_open_calls": 0
     }
     
@@ -93,7 +94,7 @@ class TestHealthAPI:
             EndpointHealth(
                 endpoint_id="api1",
                 status=EndpointStatus.ACTIVE,
-                last_check_time=datetime(2023, 1, 1, 12, 0),
+                last_check_time=datetime(2023, 1, 1, 12, 0).timestamp(),
                 response_time=0.05,
                 error_message=None,
                 consecutive_failures=0,
@@ -102,7 +103,7 @@ class TestHealthAPI:
             EndpointHealth(
                 endpoint_id="api2",
                 status=EndpointStatus.UNHEALTHY,
-                last_check_time=datetime(2023, 1, 1, 12, 5),
+                last_check_time=datetime(2023, 1, 1, 12, 5).timestamp(),
                 response_time=2.0,
                 error_message="Connection timeout",
                 consecutive_failures=3,
@@ -121,6 +122,9 @@ class TestHealthAPI:
         assert len(data["endpoints"]) == 2
         assert data["total_count"] == 2
         assert "timestamp" in data
+        assert "timestamp_iso" in data
+        assert isinstance(data["timestamp"], (int, float))
+        assert isinstance(data["timestamp_iso"], str)
         
         # Check first endpoint health
         endpoint1 = data["endpoints"][0]
@@ -153,6 +157,7 @@ class TestHealthAPI:
         assert data["endpoints"] == []
         assert data["total_count"] == 0
         assert "timestamp" in data
+        assert "timestamp_iso" in data
     
     def test_get_all_endpoints_health_failure(self, test_app, mock_health_checker):
         """Test getting all endpoints health with failure."""
@@ -172,7 +177,7 @@ class TestHealthAPI:
         endpoint_health = EndpointHealth(
             endpoint_id="specific_endpoint",
             status=EndpointStatus.INACTIVE,
-            last_check_time=datetime(2023, 1, 1, 12, 30),
+            last_check_time=datetime(2023, 1, 1, 12, 30).timestamp(),
             response_time=1.5,
             error_message="Slow response",
             consecutive_failures=1,
@@ -224,7 +229,7 @@ class TestHealthAPI:
         mock_health = EndpointHealth(
             endpoint_id="test_endpoint",
             status=EndpointStatus.ACTIVE,
-            last_check_time=datetime(2023, 1, 1, 12, 0),
+            last_check_time=datetime(2023, 1, 1, 12, 0).timestamp(),
             response_time=0.15,
             error_message=None,
             consecutive_failures=0,
@@ -267,7 +272,7 @@ class TestHealthAPI:
             EndpointHealth(
                 endpoint_id="failing_api",
                 status=EndpointStatus.UNHEALTHY,
-                last_check_time=datetime(2023, 1, 1, 12, 0),
+                last_check_time=datetime(2023, 1, 1, 12, 0).timestamp(),
                 response_time=None,
                 error_message="Service unavailable",
                 consecutive_failures=5,
@@ -276,7 +281,7 @@ class TestHealthAPI:
             EndpointHealth(
                 endpoint_id="slow_api",
                 status=EndpointStatus.DISABLED,
-                last_check_time=datetime(2023, 1, 1, 12, 5),
+                last_check_time=datetime(2023, 1, 1, 12, 5).timestamp(),
                 response_time=3.0,
                 error_message="Timeout warning",
                 consecutive_failures=2,
@@ -347,7 +352,7 @@ class TestHealthAPIIntegration:
             EndpointHealth(
                 endpoint_id="api1",
                 status=EndpointStatus.ACTIVE,
-                last_check_time=datetime(2023, 1, 1, 10, 0),
+                last_check_time=datetime(2023, 1, 1, 10, 0).timestamp(),
                 response_time=0.1,
                 error_message=None,
                 consecutive_failures=0,
@@ -356,7 +361,7 @@ class TestHealthAPIIntegration:
             EndpointHealth(
                 endpoint_id="api2",
                 status=EndpointStatus.ACTIVE,
-                last_check_time=datetime(2023, 1, 1, 10, 0),
+                last_check_time=datetime(2023, 1, 1, 10, 0).timestamp(),
                 response_time=0.2,
                 error_message=None,
                 consecutive_failures=0,
@@ -384,7 +389,7 @@ class TestHealthAPIIntegration:
             EndpointHealth(
                 endpoint_id="api1",
                 status=EndpointStatus.ACTIVE,
-                last_check_time=datetime(2023, 1, 1, 11, 0),
+                last_check_time=datetime(2023, 1, 1, 11, 0).timestamp(),
                 response_time=0.1,
                 error_message=None,
                 consecutive_failures=0,
@@ -393,7 +398,7 @@ class TestHealthAPIIntegration:
             EndpointHealth(
                 endpoint_id="api2",
                 status=EndpointStatus.UNHEALTHY,
-                last_check_time=datetime(2023, 1, 1, 11, 0),
+                last_check_time=datetime(2023, 1, 1, 11, 0).timestamp(),
                 response_time=None,
                 error_message="Connection refused",
                 consecutive_failures=3,
@@ -460,4 +465,54 @@ class TestHealthAPIIntegration:
             assert response.status_code == 500
             data = response.json()
             assert "detail" in data
-            assert "Health system unavailable" in data["detail"] or "unavailable" in data["detail"].lower() 
+            assert "Health system unavailable" in data["detail"] or "unavailable" in data["detail"].lower()
+            
+    def test_standardized_error_response_format(self, test_app, mock_health_checker):
+        """Test that error responses follow standardized format."""
+        client = TestClient(test_app)
+        
+        # Test different types of errors
+        test_cases = [
+            {
+                "error": ValueError("Invalid health check"),
+                "expected_status": 500,
+                "expected_message_contains": "Invalid health check"
+            },
+            {
+                "error": ConnectionError("Health service connection failed"),
+                "expected_status": 500,
+                "expected_message_contains": "Health service connection failed"
+            },
+            {
+                "error": TimeoutError("Health check timeout"),
+                "expected_status": 500,
+                "expected_message_contains": "Health check timeout"
+            }
+        ]
+        
+        for test_case in test_cases:
+            mock_health_checker.get_all_health_status.side_effect = test_case["error"]
+            
+            response = client.get("/health/endpoints")
+            assert response.status_code == test_case["expected_status"]
+            
+            data = response.json()
+            assert "detail" in data
+            assert test_case["expected_message_contains"] in data["detail"]
+            assert "Failed to get endpoints health" in data["detail"]  # Standardized prefix
+            
+    def test_error_logging_on_exceptions(self, test_app, mock_health_checker):
+        """Test that exceptions are properly logged."""
+        client = TestClient(test_app)
+        
+        with patch('src.orchestrator.health_api.logger') as mock_logger:
+            mock_health_checker.get_all_health_status.side_effect = Exception("Test health error")
+            
+            response = client.get("/health/endpoints")
+            assert response.status_code == 500
+            
+            # Verify error was logged
+            mock_logger.error.assert_called_once()
+            log_call = mock_logger.error.call_args[0][0]
+            assert "Failed to get endpoints health" in log_call
+            assert "Test health error" in log_call 

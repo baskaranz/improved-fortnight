@@ -4,6 +4,8 @@ Unit tests for health monitoring system.
 
 import pytest
 import asyncio
+import time
+import httpx
 from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime, timedelta
 
@@ -13,7 +15,8 @@ from src.orchestrator.models import (
     EndpointConfig,
     HealthCheckConfig,
     EndpointStatus,
-    HTTPMethod
+    HTTPMethod,
+    EndpointHealth
 )
 
 
@@ -61,6 +64,12 @@ class TestHealthChecker:
         assert health_checker.health_check_task is None
         assert isinstance(health_checker.health_data, dict)
         assert health_checker.client is not None
+        
+        # Verify consolidated HTTP client configuration
+        assert isinstance(health_checker.client, httpx.AsyncClient)
+        assert health_checker.client.timeout.connect == health_config.timeout
+        assert health_checker.client.timeout.read == health_config.timeout
+        assert health_checker.client.follow_redirects is True
     
     def test_health_checker_disabled_config(self, registry):
         """Test health checker with disabled configuration."""
@@ -144,6 +153,58 @@ class TestHealthChecker:
             await health_checker._perform_health_checks()
             
             mock_check.assert_called_once()
+            
+    @pytest.mark.asyncio
+    async def test_concurrent_health_checks(self, registry, health_config):
+        """Test concurrent health checks for multiple endpoints."""
+        health_checker = HealthChecker(registry, health_config)
+        
+        # Register multiple endpoints
+        for i in range(3):
+            config = EndpointConfig(
+                url=f"https://api{i}.example.com",
+                name=f"api_{i}",
+                methods=[HTTPMethod.GET],
+                health_check_path="/health"
+            )
+            registry.register_endpoint(config)
+        
+        # Mock the _check_endpoint_health method to track concurrent calls
+        call_times = []
+        
+        async def mock_check_endpoint_health(endpoint):
+            call_times.append(time.time())
+            await asyncio.sleep(0.1)  # Simulate some processing time
+            return True
+        
+        with patch.object(health_checker, '_check_endpoint_health', new_callable=AsyncMock) as mock_check:
+            mock_check.side_effect = mock_check_endpoint_health
+            
+            start_time = time.time()
+            await health_checker._perform_health_checks()
+            end_time = time.time()
+            
+            # Should have called health check for each endpoint
+            assert mock_check.call_count == 3
+            
+            # All calls should have started roughly at the same time (concurrent)
+            # If they were sequential, total time would be > 0.3s
+            # If concurrent, total time should be closer to 0.1s
+            total_time = end_time - start_time
+            assert total_time < 0.2  # Should be much faster than sequential
+            
+    def test_http_client_consolidation_in_health_checker(self, registry, health_config):
+        """Test that health checker uses consolidated HTTP client."""
+        health_checker = HealthChecker(registry, health_config)
+        
+        # Should have exactly one HTTP client instance
+        assert health_checker.client is not None
+        assert isinstance(health_checker.client, httpx.AsyncClient)
+        
+        # Multiple accesses should return the same client
+        client1 = health_checker.client
+        client2 = health_checker.client
+        assert client1 is client2
     
     @pytest.mark.asyncio
     async def test_check_endpoint_health_success(self, registry, health_config, sample_endpoint_config):
@@ -362,4 +423,110 @@ class TestHealthChecker:
             # If it doesn't raise an error, that's good
         except Exception as e:
             # Method exists but might not work with mocked data
-            assert "cleanup_stale_health_data" in str(type(health_checker)) 
+            assert "cleanup_stale_health_data" in str(type(health_checker))
+            
+    def test_health_data_cache_performance(self, registry, health_config):
+        """Test that health data caching improves performance."""
+        health_checker = HealthChecker(registry, health_config)
+        
+        # Add many endpoints
+        endpoints = []
+        for i in range(50):
+            config = EndpointConfig(
+                url=f"https://api{i}.example.com",
+                name=f"api_{i}",
+                methods=[HTTPMethod.GET]
+            )
+            endpoint = registry.register_endpoint(config)
+            endpoints.append(endpoint)
+        
+        # Simulate health data
+        for endpoint in endpoints:
+            health_checker.health_data[endpoint.endpoint_id] = EndpointHealth(
+                endpoint_id=endpoint.endpoint_id,
+                status=EndpointStatus.ACTIVE,
+                last_check_time=time.time(),
+                response_time=0.1,
+                error_message=None,
+                consecutive_failures=0,
+                consecutive_successes=5
+            )
+        
+        # Test performance of getting all health status
+        start_time = time.time()
+        
+        for _ in range(100):
+            all_health = health_checker.get_all_health_status()
+            assert len(all_health) == len(endpoints)
+        
+        access_time = time.time() - start_time
+        
+        # Cache access should be very fast
+        assert access_time < 0.5  # Should complete in under 500ms
+        
+    def test_health_data_memory_efficiency(self, registry, health_config):
+        """Test that health data doesn't grow unbounded."""
+        health_checker = HealthChecker(registry, health_config)
+        
+        # Add many endpoints and health data
+        for i in range(100):
+            config = EndpointConfig(
+                url=f"https://api{i}.example.com",
+                name=f"api_{i}",
+                methods=[HTTPMethod.GET]
+            )
+            endpoint = registry.register_endpoint(config)
+            
+            # Add health data
+            health_checker.health_data[endpoint.endpoint_id] = EndpointHealth(
+                endpoint_id=endpoint.endpoint_id,
+                status=EndpointStatus.ACTIVE,
+                last_check_time=time.time(),
+                response_time=0.1,
+                error_message=None,
+                consecutive_failures=0,
+                consecutive_successes=5
+            )
+        
+        # Health data should match registered endpoints
+        registered_endpoints = registry.list_endpoints()
+        assert len(health_checker.health_data) <= len(registered_endpoints)
+        
+    @pytest.mark.asyncio
+    async def test_health_check_concurrency_optimization(self, registry, health_config):
+        """Test that health checks are optimized for concurrency."""
+        health_checker = HealthChecker(registry, health_config)
+        
+        # Register multiple endpoints
+        endpoints = []
+        for i in range(5):
+            config = EndpointConfig(
+                url=f"https://api{i}.example.com",
+                name=f"api_{i}",
+                methods=[HTTPMethod.GET]
+            )
+            endpoint = registry.register_endpoint(config)
+            endpoints.append(endpoint)
+        
+        # Mock health checks to simulate processing time
+        call_order = []
+        
+        async def mock_health_check(endpoint):
+            call_order.append((endpoint.endpoint_id, time.time()))
+            await asyncio.sleep(0.1)  # Simulate processing time
+            return True
+        
+        # Test concurrent execution
+        with patch.object(health_checker, '_check_endpoint_health', new_callable=AsyncMock) as mock_check:
+            mock_check.side_effect = mock_health_check
+            
+            start_time = time.time()
+            await health_checker._perform_health_checks()
+            end_time = time.time()
+            
+            # Should have called health check for each endpoint
+            assert mock_check.call_count == len(endpoints)
+            
+            # Total time should be close to single check time (concurrent)
+            total_time = end_time - start_time
+            assert total_time < 0.3  # Should be much faster than sequential (5 * 0.1 = 0.5s) 

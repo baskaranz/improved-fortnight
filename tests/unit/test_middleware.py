@@ -157,4 +157,35 @@ class TestMiddlewareStack:
         # Check that both middleware effects are present
         assert response.status_code == 200
         assert "X-Request-ID" in response.headers
-        assert "X-Content-Type-Options" in response.headers 
+        assert "X-Content-Type-Options" in response.headers
+        
+    def test_middleware_compatibility_with_app_request_id(self):
+        """Test middleware compatibility with app-level request ID handling."""
+        from src.orchestrator.app import add_request_id_header
+        
+        app = FastAPI()
+        
+        @app.get("/test")
+        async def test_endpoint():
+            return {"message": "test"}
+        
+        # Add app-level request ID handler
+        app.middleware("http")(add_request_id_header)
+        
+        # Add other middleware
+        app.add_middleware(SecurityHeadersMiddleware)
+        
+        client = TestClient(app)
+        response = client.get("/test")
+        
+        # Should have request ID from app-level handler
+        assert response.status_code == 200
+        assert "X-Request-ID" in response.headers
+        assert "X-Content-Type-Options" in response.headers
+        
+        # Verify request ID is a valid UUID
+        import uuid
+        try:
+            uuid.UUID(response.headers["X-Request-ID"])
+        except ValueError:
+            pytest.fail("Request ID is not a valid UUID") 

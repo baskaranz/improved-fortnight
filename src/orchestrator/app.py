@@ -4,6 +4,7 @@ FastAPI application factory and main application setup.
 
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import AsyncGenerator
@@ -170,7 +171,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     
     return JSONResponse(
         status_code=500,
-        content=error_response.dict()
+        content=error_response.model_dump()
     )
 
 
@@ -250,7 +251,7 @@ def create_app() -> FastAPI:
             
             return {
                 "status": "healthy",
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.fromtimestamp(time.time()).isoformat() + 'Z',
                 "configuration": {
                     "loaded": config_status["loaded"],
                     "endpoints_count": config_status["endpoints_count"]

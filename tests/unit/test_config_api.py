@@ -412,4 +412,54 @@ class TestConfigurationAPIIntegration:
             assert response.status_code == 500
             data = response.json()
             assert "detail" in data
-            assert "System unavailable" in data["detail"] 
+            assert "System unavailable" in data["detail"]
+            
+    def test_standardized_error_response_format(self, test_app, mock_config_manager):
+        """Test that error responses follow standardized format."""
+        client = TestClient(test_app)
+        
+        # Test different types of errors
+        test_cases = [
+            {
+                "error": ValueError("Invalid configuration"),
+                "expected_status": 500,
+                "expected_message_contains": "Invalid configuration"
+            },
+            {
+                "error": FileNotFoundError("Config file not found"),
+                "expected_status": 500,
+                "expected_message_contains": "Config file not found"
+            },
+            {
+                "error": PermissionError("Permission denied"),
+                "expected_status": 500,
+                "expected_message_contains": "Permission denied"
+            }
+        ]
+        
+        for test_case in test_cases:
+            mock_config_manager.get_status.side_effect = test_case["error"]
+            
+            response = client.get("/config/status")
+            assert response.status_code == test_case["expected_status"]
+            
+            data = response.json()
+            assert "detail" in data
+            assert test_case["expected_message_contains"] in data["detail"]
+            assert "Failed to get configuration status" in data["detail"]  # Standardized prefix
+            
+    def test_error_logging_on_exceptions(self, test_app, mock_config_manager):
+        """Test that exceptions are properly logged."""
+        client = TestClient(test_app)
+        
+        with patch('src.orchestrator.config_api.logger') as mock_logger:
+            mock_config_manager.get_status.side_effect = Exception("Test error")
+            
+            response = client.get("/config/status")
+            assert response.status_code == 500
+            
+            # Verify error was logged
+            mock_logger.error.assert_called_once()
+            log_call = mock_logger.error.call_args[0][0]
+            assert "Failed to get configuration status" in log_call
+            assert "Test error" in log_call 

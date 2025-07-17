@@ -4,6 +4,7 @@ Endpoint registry for managing dynamic endpoint registration and unregistration.
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 from threading import RLock
 from typing import Dict, List, Optional, Set
@@ -44,7 +45,7 @@ class EndpointRegistry:
                 
                 # Update existing endpoint
                 existing.config = config
-                existing.registration_time = datetime.now()
+                existing.registration_time = time.time()
                 existing.status = EndpointStatus.DISABLED if config.disabled else EndpointStatus.ACTIVE
                 logger.info(f"Updated endpoint: {endpoint_id}")
                 return existing
@@ -162,7 +163,7 @@ class EndpointRegistry:
                 return False
             
             endpoint.consecutive_failures += 1
-            endpoint.last_failure_time = datetime.now()
+            endpoint.last_failure_time = time.time()
             
             logger.debug(f"Recorded failure for {endpoint_id}: {endpoint.consecutive_failures} consecutive")
             return True
@@ -180,7 +181,7 @@ class EndpointRegistry:
             logger.debug(f"Recorded success for {endpoint_id}")
             return True
     
-    def update_health_check(self, endpoint_id: str, last_check: datetime) -> bool:
+    def update_health_check(self, endpoint_id: str, last_check: float) -> bool:
         """Update the last health check time for an endpoint."""
         with self._lock:
             endpoint = self._endpoints.get(endpoint_id)

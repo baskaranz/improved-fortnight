@@ -3,6 +3,7 @@ Tests for registry API endpoints.
 """
 
 import pytest
+import time
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 from fastapi.testclient import TestClient
@@ -34,7 +35,7 @@ def mock_registry():
     
     sample_endpoint = RegisteredEndpoint(
         config=sample_config,
-        registration_time=datetime(2024, 1, 1, 12, 0, 0),
+        registration_time=datetime(2024, 1, 1, 12, 0, 0).timestamp(),
         status=EndpointStatus.ACTIVE,
         circuit_breaker_state=CircuitBreakerState.CLOSED,
         consecutive_failures=0,
@@ -53,11 +54,11 @@ def mock_registry():
     
     sample_endpoint_2 = RegisteredEndpoint(
         config=sample_config_2,
-        registration_time=datetime(2024, 1, 1, 13, 0, 0),
+        registration_time=datetime(2024, 1, 1, 13, 0, 0).timestamp(),
         status=EndpointStatus.DISABLED,
         circuit_breaker_state=CircuitBreakerState.CLOSED,
         consecutive_failures=2,
-        last_failure_time=datetime(2024, 1, 1, 14, 0, 0)
+        last_failure_time=datetime(2024, 1, 1, 14, 0, 0).timestamp()
     )
     
     # Configure mock responses
@@ -409,6 +410,9 @@ class TestGetRegistryStats:
         
         assert "registry_stats" in data
         assert "timestamp" in data
+        assert "timestamp_iso" in data
+        assert isinstance(data["timestamp"], (int, float))
+        assert isinstance(data["timestamp_iso"], str)
         
         stats = data["registry_stats"]
         assert stats["total"] == 2

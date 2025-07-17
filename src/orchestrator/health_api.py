@@ -3,6 +3,7 @@ Health monitoring API endpoints.
 """
 
 import logging
+import time
 from typing import Dict, Any, List
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
@@ -60,9 +61,11 @@ async def get_system_health_status(
         else:
             system_status = "unhealthy"
         
+        current_time = time.time()
         return {
             "system_status": system_status,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": current_time,
+            "timestamp_iso": datetime.fromtimestamp(current_time).isoformat() + 'Z',
             "summary": summary,
             "circuit_breaker_summary": {
                 "total_circuit_breakers": total_breakers,
@@ -95,7 +98,7 @@ async def get_all_endpoints_health(
             endpoints_health.append({
                 "endpoint_id": health.endpoint_id,
                 "status": health.status.value,
-                "last_check_time": health.last_check_time.isoformat(),
+                "last_check_time": health.last_check_time_iso,
                 "response_time": health.response_time,
                 "error_message": health.error_message,
                 "consecutive_failures": health.consecutive_failures,
@@ -105,10 +108,12 @@ async def get_all_endpoints_health(
         # Sort by endpoint_id for consistent ordering
         endpoints_health.sort(key=lambda x: x["endpoint_id"])
         
+        current_time = time.time()
         return {
             "endpoints": endpoints_health,
             "total_count": len(endpoints_health),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": current_time,
+            "timestamp_iso": datetime.fromtimestamp(current_time).isoformat() + 'Z'
         }
         
     except Exception as e:
@@ -141,12 +146,13 @@ async def get_endpoint_health(
         response = {
             "endpoint_id": health.endpoint_id,
             "status": health.status.value,
-            "last_check_time": health.last_check_time.isoformat(),
+            "last_check_time": health.last_check_time_iso,
             "response_time": health.response_time,
             "error_message": health.error_message,
             "consecutive_failures": health.consecutive_failures,
             "consecutive_successes": health.consecutive_successes,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": time.time(),
+            "timestamp_iso": datetime.fromtimestamp(time.time()).isoformat() + 'Z'
         }
         
         # Add circuit breaker information if available
@@ -189,13 +195,14 @@ async def trigger_immediate_health_check(
             "result": {
                 "endpoint_id": health.endpoint_id,
                 "status": health.status.value,
-                "last_check_time": health.last_check_time.isoformat(),
+                "last_check_time": health.last_check_time_iso,
                 "response_time": health.response_time,
                 "error_message": health.error_message,
                 "consecutive_failures": health.consecutive_failures,
                 "consecutive_successes": health.consecutive_successes
             },
-            "timestamp": datetime.now().isoformat()
+            "timestamp": time.time(),
+            "timestamp_iso": datetime.fromtimestamp(time.time()).isoformat() + 'Z'
         }
         
     except ValueError as e:
@@ -222,7 +229,7 @@ async def get_unhealthy_endpoints(
             unhealthy_endpoints.append({
                 "endpoint_id": health.endpoint_id,
                 "status": health.status.value,
-                "last_check_time": health.last_check_time.isoformat(),
+                "last_check_time": health.last_check_time_iso,
                 "response_time": health.response_time,
                 "error_message": health.error_message,
                 "consecutive_failures": health.consecutive_failures,
@@ -232,7 +239,8 @@ async def get_unhealthy_endpoints(
         return {
             "unhealthy_endpoints": unhealthy_endpoints,
             "count": len(unhealthy_endpoints),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": time.time(),
+            "timestamp_iso": datetime.fromtimestamp(time.time()).isoformat() + 'Z'
         }
         
     except Exception as e:
@@ -253,7 +261,8 @@ async def get_health_summary(
         
         return {
             "summary": summary,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": time.time(),
+            "timestamp_iso": datetime.fromtimestamp(time.time()).isoformat() + 'Z'
         }
         
     except Exception as e:
@@ -287,7 +296,8 @@ async def get_circuit_breaker_status(
                 "health_percentage": (closed_breakers / total_breakers * 100) if total_breakers > 0 else 100
             },
             "circuit_breakers": all_stats,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": time.time(),
+            "timestamp_iso": datetime.fromtimestamp(time.time()).isoformat() + 'Z'
         }
         
     except Exception as e:
@@ -310,7 +320,8 @@ async def get_open_circuit_breakers(
         return {
             "open_circuit_breakers": open_breakers,
             "count": len(open_breakers),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": time.time(),
+            "timestamp_iso": datetime.fromtimestamp(time.time()).isoformat() + 'Z'
         }
         
     except Exception as e:
