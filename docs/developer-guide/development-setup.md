@@ -62,6 +62,99 @@ cd yet-another-orch-api
 git remote add upstream https://github.com/original-repo/yet-another-orch-api.git
 ```
 
+### 2. Choose Your Development Environment
+
+**Option A: Docker Development (Recommended)**
+- ✅ Consistent environment across all developers
+- ✅ No local Python setup required
+- ✅ Matches production environment
+- ✅ Includes hot reload for development
+
+**Option B: Local Python Development**  
+- ✅ Direct access to Python tools
+- ✅ Faster iteration for some workflows
+- ✅ Better IDE integration for debugging
+
+## 🐳 Docker Development Setup
+
+### Prerequisites for Docker
+- Docker Engine 20.10+
+- Docker Compose 2.0+
+- Make (optional, for convenience)
+
+### Quick Docker Setup
+
+```bash
+# Option 1: Using Make (recommended)
+make setup
+# This will build and start the development environment
+
+# Option 2: Using Docker Compose directly
+docker-compose --profile dev up -d orchestrator-dev
+
+# Option 3: Manual Docker commands
+docker build -t orchestrator-api .
+docker run -d \
+  --name orchestrator-dev \
+  -p 8000:8000 \
+  -v $(pwd):/app \
+  orchestrator-api \
+  python main.py --reload --log-level debug
+```
+
+### Docker Development Commands
+
+```bash
+# Start development environment with hot reload
+make run-dev
+# OR
+docker-compose --profile dev up -d orchestrator-dev
+
+# View logs
+make logs-dev
+# OR  
+docker-compose logs -f orchestrator-dev
+
+# Run tests in container
+make test
+# OR
+docker-compose exec orchestrator-dev python -m pytest
+
+# Access container shell
+make shell
+# OR
+docker-compose exec orchestrator-dev /bin/bash
+
+# Stop development environment
+make stop
+# OR
+docker-compose down
+```
+
+### Verify Docker Setup
+
+```bash
+# Check container is running
+docker ps
+
+# Test health endpoint
+curl http://localhost:8000/health
+
+# Test API documentation
+open http://localhost:8000/docs
+```
+
+### Docker Development Benefits
+
+- **Hot Reload**: Code changes automatically trigger server restart
+- **Consistent Environment**: Same Python version and dependencies
+- **No Local Setup**: No need to install Python or manage virtual environments
+- **Production Parity**: Container matches production environment
+
+> **📖 Complete Docker Guide**: For more Docker options, see [DOCKER.md](../../DOCKER.md)
+
+## 🐍 Local Python Development Setup
+
 ### 2. Create Virtual Environment
 
 #### Using venv (Recommended)
@@ -343,6 +436,29 @@ tests/
 
 ### Running Tests
 
+#### Docker Testing
+
+```bash
+# Run all tests in container
+make test
+# OR
+docker-compose exec orchestrator-dev python -m pytest
+
+# Run with coverage
+docker-compose exec orchestrator-dev python -m pytest --cov=src --cov-report=term-missing
+
+# Run specific test file
+docker-compose exec orchestrator-dev python -m pytest tests/unit/test_app.py
+
+# Run tests with verbose output
+docker-compose exec orchestrator-dev python -m pytest -v
+
+# Run tests interactively (for debugging)
+docker-compose exec orchestrator-dev python -m pytest -s --pdb
+```
+
+#### Local Python Testing
+
 ```bash
 # Run all tests
 pytest
@@ -395,6 +511,25 @@ markers =
 ## 🔄 Development Workflow
 
 ### 1. Start Development Environment
+
+#### Docker Workflow
+
+```bash
+# Start development environment with hot reload
+make run-dev
+# OR
+docker-compose --profile dev up -d orchestrator-dev
+
+# View logs in real-time
+make logs-dev
+# OR
+docker-compose logs -f orchestrator-dev
+
+# In another terminal, run tests
+make test
+```
+
+#### Python Workflow
 
 ```bash
 # Activate virtual environment

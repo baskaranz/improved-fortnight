@@ -44,8 +44,30 @@ curl http://localhost:8000/health/circuit-breakers
 - Service exits immediately
 - "Address already in use" error
 - Permission denied errors
+- Container exits with error
 
 **Diagnosis:**
+
+#### Docker Diagnosis
+```bash
+# Check container status
+docker ps -a
+
+# Check container logs
+docker-compose logs orchestrator
+# OR
+docker logs orchestrator-api
+
+# Check if port is already in use
+docker ps | grep 8000
+lsof -i :8000
+
+# Check Docker daemon
+docker version
+docker info
+```
+
+#### Python Diagnosis
 ```bash
 # Check if port is already in use
 lsof -i :8000
@@ -62,6 +84,47 @@ python main.py --config config/config.yaml --help
 ```
 
 **Solutions:**
+
+#### Docker Solutions
+
+**Container Won't Start:**
+```bash
+# Check Docker daemon is running
+sudo systemctl start docker
+
+# Rebuild container
+docker-compose build orchestrator
+docker-compose up -d orchestrator
+
+# Check for image issues
+docker images | grep orchestrator
+docker build -t orchestrator-api .
+```
+
+**Port Already in Use:**
+```bash
+# Option 1: Kill existing container
+docker stop orchestrator-api
+docker rm orchestrator-api
+
+# Option 2: Use different port
+docker run -p 9000:8000 orchestrator-api
+# OR edit docker-compose.yml ports section
+
+# Option 3: Kill process using port
+kill $(lsof -t -i:8000)
+```
+
+**Permission Issues:**
+```bash
+# Fix config file permissions
+sudo chown -R 1000:1000 ./config
+
+# Check volume mounts
+docker inspect orchestrator-api | jq '.[0].Mounts'
+```
+
+#### Python Solutions
 
 **Port Already in Use:**
 ```bash
@@ -575,7 +638,8 @@ When reporting issues, please include:
 
 ### Where to Get Help
 
-- **Documentation**: Check other guides in this documentation
+- **Docker Issues**: Check the [Docker Guide](../DOCKER.md) for container-specific troubleshooting
+- **Documentation**: Check other guides in this documentation  
 - **GitHub Issues**: Create an issue with the information above
 - **Community**: Join the community discussion forums
 

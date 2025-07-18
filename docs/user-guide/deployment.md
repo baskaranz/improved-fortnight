@@ -16,7 +16,30 @@ Before deploying to production, ensure you have:
 
 ## 🚀 Deployment Options
 
-### Option 1: Direct Python Deployment
+### Option 1: Docker Deployment (Recommended)
+
+**Best for**: Production environments, containerized infrastructure, Kubernetes
+
+```bash
+# Production deployment with Docker Compose
+docker-compose up -d orchestrator
+
+# Or with custom configuration
+docker run -d \
+  --name orchestrator-api \
+  -p 8000:8000 \
+  -v $(pwd)/config:/app/config:ro \
+  --restart unless-stopped \
+  orchestrator-api
+```
+
+**Verify deployment:**
+```bash
+docker ps  # Check container status
+curl http://localhost:8000/health
+```
+
+### Option 2: Direct Python Deployment
 
 **Best for**: Small to medium deployments, development staging
 
@@ -55,42 +78,88 @@ uvicorn src.orchestrator.app:create_app \
   --log-level info
 ```
 
-### Option 3: Docker Deployment
+### Option 3: Docker with Kubernetes
 
-**Best for**: Containerized environments, Kubernetes
+**Best for**: Large-scale deployments, orchestrated environments
 
-```dockerfile
-# Dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install dependencies
-COPY pyproject.toml .
-RUN pip install -e .
-
-# Copy application
-COPY src/ src/
-COPY config/ config/
-
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash orchestrator
-USER orchestrator
-
-# Expose port
-EXPOSE 8000
-
-# Start application
-CMD ["python", "main.py", "--host", "0.0.0.0", "--port", "8000"]
+```yaml
+# kubernetes-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: orchestrator-api
+  template:
+    metadata:
+      labels:
+        app: orchestrator-api
+    spec:
+      containers:
+      - name: orchestrator-api
+        image: orchestrator-api:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: LOG_LEVEL
+          value: "info"
+        - name: CONFIG_PATH
+          value: "/app/config/config.yaml"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config-volume
+        configMap:
+          name: orchestrator-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator-service
+spec:
+  selector:
+    app: orchestrator-api
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8000
+  type: LoadBalancer
 ```
 
 ```bash
-# Build and run
-docker build -t orchestrator-api .
-docker run -d -p 8000:8000 \
-  -v $(pwd)/config:/app/config \
-  orchestrator-api
+# Deploy to Kubernetes
+kubectl apply -f kubernetes-deployment.yaml
+
+# Check deployment status
+kubectl get pods -l app=orchestrator-api
+kubectl get service orchestrator-service
 ```
+
+> **📖 Complete Docker Guide**: For comprehensive Docker setup, configuration, and troubleshooting, see [DOCKER.md](../DOCKER.md)
 
 ### Option 4: Systemd Service
 

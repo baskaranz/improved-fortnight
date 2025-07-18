@@ -2,6 +2,7 @@
 Data models for the orchestrator service using Pydantic.
 """
 
+import time
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional, Dict, Any, Union
@@ -107,12 +108,12 @@ class OrchestratorConfig(BaseModel):
 class RegisteredEndpoint(BaseModel):
     """Runtime endpoint information."""
     config: EndpointConfig
-    registration_time: datetime = Field(default_factory=datetime.now)
-    last_health_check: Optional[datetime] = None
+    registration_time: float = Field(default_factory=time.time, description="Registration timestamp (epoch)")
+    last_health_check: Optional[float] = Field(None, description="Last health check timestamp (epoch)")
     status: EndpointStatus = Field(default=EndpointStatus.ACTIVE)
     circuit_breaker_state: CircuitBreakerState = Field(default=CircuitBreakerState.CLOSED)
     consecutive_failures: int = Field(default=0)
-    last_failure_time: Optional[datetime] = None
+    last_failure_time: Optional[float] = Field(None, description="Last failure timestamp (epoch)")
     
     @property
     def endpoint_id(self) -> str:
@@ -120,6 +121,25 @@ class RegisteredEndpoint(BaseModel):
         if self.config.name:
             return self.config.name
         return f"endpoint_{hash(str(self.config.url))}"
+    
+    @property
+    def registration_time_iso(self) -> str:
+        """Get registration time in ISO format."""
+        return datetime.fromtimestamp(self.registration_time).isoformat() + 'Z'
+    
+    @property
+    def last_health_check_iso(self) -> Optional[str]:
+        """Get last health check time in ISO format."""
+        if self.last_health_check:
+            return datetime.fromtimestamp(self.last_health_check).isoformat() + 'Z'
+        return None
+    
+    @property
+    def last_failure_time_iso(self) -> Optional[str]:
+        """Get last failure time in ISO format."""
+        if self.last_failure_time:
+            return datetime.fromtimestamp(self.last_failure_time).isoformat() + 'Z'
+        return None
     
     def __hash__(self) -> int:
         return hash(str(self.config.url))
@@ -134,20 +154,32 @@ class EndpointHealth(BaseModel):
     """Health status of an endpoint."""
     endpoint_id: str
     status: EndpointStatus
-    last_check_time: datetime
+    last_check_time: float = Field(..., description="Last check timestamp (epoch)")
     response_time: Optional[float] = None
     error_message: Optional[str] = None
     consecutive_failures: int = 0
     consecutive_successes: int = 0
+    
+    @property
+    def last_check_time_iso(self) -> str:
+        """Get last check time in ISO format."""
+        return datetime.fromtimestamp(self.last_check_time).isoformat() + 'Z'
 
 
 class ConfigurationStatus(BaseModel):
     """Configuration status information."""
     loaded: bool = False
-    last_reload: Optional[datetime] = None
+    last_reload: Optional[float] = Field(None, description="Last reload timestamp (epoch)")
     version: str = "unknown"
     error_message: Optional[str] = None
     endpoints_count: int = 0
+    
+    @property
+    def last_reload_iso(self) -> Optional[str]:
+        """Get last reload time in ISO format."""
+        if self.last_reload:
+            return datetime.fromtimestamp(self.last_reload).isoformat() + 'Z'
+        return None
     
     
 class ErrorResponse(BaseModel):
@@ -155,10 +187,13 @@ class ErrorResponse(BaseModel):
     error: str
     message: str
     details: Optional[Dict[str, Any]] = None
-    timestamp: Optional[str] = None
+    timestamp: Optional[float] = Field(None, description="Error timestamp (epoch)")
+    timestamp_iso: Optional[str] = Field(None, description="Error timestamp (ISO format)")
     request_id: Optional[str] = None
     
     def __init__(self, **data):
         if 'timestamp' not in data:
-            data['timestamp'] = datetime.now().isoformat()
+            data['timestamp'] = time.time()
+        if 'timestamp_iso' not in data and 'timestamp' in data:
+            data['timestamp_iso'] = datetime.fromtimestamp(data['timestamp']).isoformat() + 'Z'
         super().__init__(**data)

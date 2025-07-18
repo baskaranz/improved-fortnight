@@ -17,21 +17,28 @@ The Orchestrator API is a **production-ready API gateway** that dynamically rout
 
 ## 🏃 Quick Start (5 minutes)
 
-1. **Install and run:**
-   ```bash
-   git clone <repository-url>
-   cd yet-another-orch-api
-   pip install -e .
-   python main.py
-   ```
+### Option 1: Docker (Recommended)
+```bash
+git clone <repository-url>
+cd yet-another-orch-api
+docker-compose up -d orchestrator
+```
 
-2. **Verify it's working:**
-   ```bash
-   curl http://localhost:8000/health
-   ```
+### Option 2: Python
+```bash
+git clone <repository-url>
+cd yet-another-orch-api
+pip install -e .
+python main.py
+```
 
-3. **View the API documentation:**
-   Open http://localhost:8000/docs in your browser
+**Verify it's working:**
+```bash
+curl http://localhost:8000/health
+```
+
+**View the API documentation:**
+Open http://localhost:8000/docs in your browser
 
 ➡️ **[Continue with detailed Quick Start →](quick-start.md)**
 

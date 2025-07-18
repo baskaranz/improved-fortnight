@@ -163,7 +163,7 @@ class HealthChecker:
         error_message: Optional[str]
     ) -> None:
         """Update health status for an endpoint."""
-        now = datetime.now()
+        now = time.time()
         
         # Get or create health data
         if endpoint_id not in self.health_data:
@@ -273,7 +273,7 @@ class HealthChecker:
     
     def cleanup_stale_health_data(self, max_age_hours: int = 24) -> None:
         """Remove health data for endpoints that no longer exist."""
-        cutoff_time = datetime.now() - timedelta(hours=max_age_hours)
+        cutoff_time = time.time() - (max_age_hours * 3600)  # Convert hours to seconds
         active_endpoint_ids = {ep.endpoint_id for ep in self.registry.list_endpoints()}
         
         stale_ids = []

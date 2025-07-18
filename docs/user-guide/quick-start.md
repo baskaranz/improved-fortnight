@@ -4,11 +4,36 @@ Get the Orchestrator API running in your environment in **5 minutes**.
 
 ## 🔧 Prerequisites
 
+### Option 1: Docker (Recommended)
+- Docker Engine 20.10+
+- Docker Compose 2.0+
+- Make (optional, for convenience commands)
+
+### Option 2: Python
 - Python 3.9 or higher
 - pip (Python package installer)  
 - Virtual environment (recommended)
 
 ## 🚀 Step 1: Install
+
+### Docker Installation (Recommended)
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd yet-another-orch-api
+
+# Start with Docker Compose
+docker-compose up -d orchestrator
+```
+
+**Verify installation:**
+```bash
+docker ps  # Should show orchestrator-api container running
+curl http://localhost:8000/health
+```
+
+### Python Installation
 
 ```bash
 # Clone the repository
@@ -29,6 +54,22 @@ python main.py --help
 ```
 
 ## ⚙️ Step 2: Start the Service
+
+### Docker
+
+```bash
+# Production mode
+docker-compose up -d orchestrator
+
+# Development mode with hot reload
+docker-compose --profile dev up -d orchestrator-dev
+
+# Using Make (if available)
+make up      # Production
+make up-dev  # Development
+```
+
+### Python
 
 ```bash
 # Start with default configuration
@@ -93,23 +134,42 @@ curl http://localhost:8000/registry/stats
 
 ## 🔧 Configuration Options
 
-### Custom Port
+### Docker Configuration
+
 ```bash
+# Custom port
+docker run -d -p 9000:8000 orchestrator-api
+
+# Custom configuration file
+docker run -d -p 8000:8000 \
+  -v /path/to/your/config.yaml:/app/config/config.yaml:ro \
+  orchestrator-api
+
+# Environment variables
+docker run -d -p 8000:8000 \
+  -e LOG_LEVEL=debug \
+  -e PORT=8000 \
+  orchestrator-api
+
+# Using docker-compose with custom settings
+export LOG_LEVEL=debug
+export PORT=9000
+docker-compose up -d orchestrator
+```
+
+### Python Configuration
+
+```bash
+# Custom Port
 python main.py --port 9000
-```
 
-### Custom Configuration File
-```bash
+# Custom Configuration File
 python main.py --config /path/to/your/config.yaml
-```
 
-### Debug Mode
-```bash
+# Debug Mode
 python main.py --log-level debug
-```
 
-### Production Mode
-```bash
+# Production Mode
 python main.py --host 0.0.0.0 --port 8000 --log-level info
 ```
 
@@ -156,7 +216,44 @@ curl http://localhost:8000/orchestrator/your_service/endpoint
 
 ## 🚨 Common Issues
 
-### Port Already in Use
+### Docker Issues
+
+**Container won't start:**
+```bash
+# Check container logs
+docker-compose logs orchestrator
+
+# Check if port is in use
+docker ps | grep 8000
+
+# Use different port
+docker run -p 9000:8000 orchestrator-api
+```
+
+**Container runs but service unreachable:**
+```bash
+# Check container status
+docker ps
+
+# Check container health
+docker inspect orchestrator-api | jq '.[0].State.Health'
+
+# Test from inside container
+docker exec orchestrator-api curl http://localhost:8000/health
+```
+
+**Configuration not loading:**
+```bash
+# Check volume mount
+docker inspect orchestrator-api | jq '.[0].Mounts'
+
+# Fix permissions
+sudo chown -R 1000:1000 ./config
+```
+
+### Python Issues
+
+**Port Already in Use:**
 ```bash
 # Check what's using the port
 lsof -i :8000
@@ -165,7 +262,7 @@ lsof -i :8000
 python main.py --port 9000
 ```
 
-### Service Not Starting
+**Service Not Starting:**
 ```bash
 # Check Python version
 python --version  # Should be 3.9+
@@ -174,7 +271,9 @@ python --version  # Should be 3.9+
 pip install -e .
 ```
 
-### Can't Reach Backend Services
+### General Issues
+
+**Can't Reach Backend Services:**
 ```bash
 # Check endpoint health
 curl http://localhost:8000/health/endpoints/your_service
@@ -184,6 +283,8 @@ curl http://localhost:8000/health/circuit-breakers
 ```
 
 ## 📈 Next Steps
+
+**Using Docker?** → [Docker Documentation](../DOCKER.md)
 
 **Ready for production?** → [Deployment Guide](deployment.md)
 

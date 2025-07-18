@@ -29,10 +29,10 @@ class CircuitBreaker:
         self.config = config
         self.state = CircuitBreakerState.CLOSED
         self.failure_count = 0
-        self.last_failure_time: Optional[datetime] = None
-        self.last_success_time: Optional[datetime] = None
+        self.last_failure_time: Optional[float] = None
+        self.last_success_time: Optional[float] = None
         self.half_open_calls = 0
-        self.state_changed_time = datetime.now()
+        self.state_changed_time = time.time()
         self._lock = asyncio.Lock()
     
     async def call(self, func: Callable[[], Awaitable[Any]]) -> Any:
@@ -62,8 +62,8 @@ class CircuitBreaker:
         if self.state == CircuitBreakerState.OPEN:
             # Check if we should transition to half-open
             if self.last_failure_time:
-                time_since_failure = datetime.now() - self.last_failure_time
-                if time_since_failure.total_seconds() >= self.config.reset_timeout:
+                time_since_failure = time.time() - self.last_failure_time
+                if time_since_failure >= self.config.reset_timeout:
                     await self._transition_to_half_open()
         
         return self.state
@@ -71,7 +71,7 @@ class CircuitBreaker:
     async def _on_success(self) -> None:
         """Handle successful operation."""
         async with self._lock:
-            self.last_success_time = datetime.now()
+            self.last_success_time = time.time()
             
             if self.state == CircuitBreakerState.HALF_OPEN:
                 # Transition back to closed after successful half-open calls
@@ -97,7 +97,7 @@ class CircuitBreaker:
         """Transition to open state."""
         old_state = self.state
         self.state = CircuitBreakerState.OPEN
-        self.state_changed_time = datetime.now()
+        self.state_changed_time = time.time()
         self.half_open_calls = 0
         
         logger.warning(f"Circuit breaker opened for {self.endpoint_id} "
@@ -145,7 +145,7 @@ class CircuitBreaker:
         """Manually trip the circuit breaker to open state."""
         async with self._lock:
             self.failure_count = self.config.failure_threshold
-            self.last_failure_time = datetime.now()
+            self.last_failure_time = time.time()
             await self._transition_to_open()
             logger.info(f"Circuit breaker manually tripped for {self.endpoint_id}")
     
@@ -155,9 +155,9 @@ class CircuitBreaker:
             "endpoint_id": self.endpoint_id,
             "state": self.state.value,
             "failure_count": self.failure_count,
-            "last_failure_time": self.last_failure_time.isoformat() if self.last_failure_time else None,
-            "last_success_time": self.last_success_time.isoformat() if self.last_success_time else None,
-            "state_changed_time": self.state_changed_time.isoformat(),
+            "last_failure_time": datetime.fromtimestamp(self.last_failure_time).isoformat() + 'Z' if self.last_failure_time else None,
+            "last_success_time": datetime.fromtimestamp(self.last_success_time).isoformat() + 'Z' if self.last_success_time else None,
+            "state_changed_time": datetime.fromtimestamp(self.state_changed_time).isoformat() + 'Z',
             "half_open_calls": self.half_open_calls,
             "config": {
                 "failure_threshold": self.config.failure_threshold,
@@ -187,7 +187,7 @@ class FallbackHandler:
                 "error": "service_unavailable",
                 "message": f"Service {endpoint_id} is currently unavailable",
                 "circuit_breaker_state": "open",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.fromtimestamp(time.time()).isoformat() + 'Z'
             }
         
         elif strategy == FallbackStrategy.DEFAULT_RESPONSE:

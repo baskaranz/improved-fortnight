@@ -4,6 +4,7 @@ Tests for circuit breaker functionality and fault tolerance.
 
 import pytest
 import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timedelta
 
@@ -130,9 +131,7 @@ class TestCircuitBreaker:
         assert circuit_breaker.state == CircuitBreakerState.OPEN
         
         # Simulate timeout passage
-        circuit_breaker.last_failure_time = datetime.now() - timedelta(
-            seconds=circuit_breaker.config.reset_timeout + 1
-        )
+        circuit_breaker.last_failure_time = time.time() - (circuit_breaker.config.reset_timeout + 1)
         
         # Check state - should transition to half-open
         state = await circuit_breaker._get_state()
@@ -497,9 +496,7 @@ class TestCircuitBreakerIntegration:
         assert circuit_breaker.state == CircuitBreakerState.OPEN
         
         # Simulate timeout for half-open transition
-        circuit_breaker.last_failure_time = datetime.now() - timedelta(
-            seconds=circuit_breaker.config.reset_timeout + 1
-        )
+        circuit_breaker.last_failure_time = time.time() - (circuit_breaker.config.reset_timeout + 1)
         
         # Should transition to HALF_OPEN on next state check
         await circuit_breaker._get_state()

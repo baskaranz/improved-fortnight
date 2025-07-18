@@ -64,6 +64,14 @@ class TestEndpointProxy:
         proxy = EndpointProxy(timeout=60)
         assert proxy.timeout == 60
         assert proxy.client is not None
+        
+        # Verify client is properly configured
+        assert isinstance(proxy.client, httpx.AsyncClient)
+        assert proxy.client.timeout.connect == 60
+        assert proxy.client.timeout.read == 60
+        assert proxy.client.timeout.write == 60
+        assert proxy.client.timeout.pool == 60
+        assert proxy.client.follow_redirects is True
     
     def test_endpoint_proxy_default_timeout(self):
         """Test endpoint proxy with default timeout."""
@@ -231,6 +239,21 @@ class TestRequestRouter:
         assert router.registry is registry
         assert router.proxy is not None
         assert isinstance(router.route_cache, dict)
+        assert router.circuit_breaker_manager is None  # Default is None
+        
+    def test_request_router_initialization_with_circuit_breaker(self, registry):
+        """Test request router initialization with circuit breaker manager."""
+        from src.orchestrator.circuit_breaker import CircuitBreakerManager
+        from src.orchestrator.models import CircuitBreakerConfig
+        
+        cb_config = CircuitBreakerConfig()
+        cb_manager = CircuitBreakerManager(registry, cb_config)
+        router = RequestRouter(registry, cb_manager)
+        
+        assert router.registry is registry
+        assert router.circuit_breaker_manager is cb_manager
+        assert router.proxy is not None
+        assert isinstance(router.route_cache, dict)
     
     def test_update_cache(self, registry, sample_endpoint_config):
         """Test route cache updating."""
@@ -342,6 +365,66 @@ class TestRequestRouter:
                 
                 # Verify success was recorded
                 assert endpoint.consecutive_failures == 0
+    
+    @pytest.mark.asyncio
+    async def test_route_request_with_circuit_breaker(self, registry, sample_endpoint_config, mock_request):
+        """Test request routing with circuit breaker integration."""
+        from src.orchestrator.circuit_breaker import CircuitBreakerManager
+        from src.orchestrator.models import CircuitBreakerConfig
+        
+        cb_config = CircuitBreakerConfig()
+        cb_manager = CircuitBreakerManager(registry, cb_config)
+        router = RequestRouter(registry, cb_manager)
+        endpoint = registry.register_endpoint(sample_endpoint_config)
+        router._update_cache()
+        
+        # Mock the circuit breaker execution
+        with patch.object(cb_manager, 'execute_with_circuit_breaker', new_callable=AsyncMock) as mock_execute:
+            mock_execute.return_value = (200, {"content-type": "application/json"}, b'{"result": "ok"}')
+            
+            with patch('time.time', return_value=1000.0):
+                response = await router.route_request(mock_request, "/test_api/users")
+                
+                assert isinstance(response, Response)
+                assert response.status_code == 200
+                assert response.body == b'{"result": "ok"}'
+                
+                # Verify circuit breaker was used
+                mock_execute.assert_called_once()
+                call_args = mock_execute.call_args
+                assert call_args[0][0] == endpoint.endpoint_id  # First arg should be endpoint_id
+    
+    @pytest.mark.asyncio
+    async def test_route_request_circuit_breaker_fallback(self, registry, sample_endpoint_config, mock_request):
+        """Test request routing with circuit breaker fallback response."""
+        from src.orchestrator.circuit_breaker import CircuitBreakerManager
+        from src.orchestrator.models import CircuitBreakerConfig
+        
+        cb_config = CircuitBreakerConfig()
+        cb_manager = CircuitBreakerManager(registry, cb_config)
+        router = RequestRouter(registry, cb_manager)
+        endpoint = registry.register_endpoint(sample_endpoint_config)
+        router._update_cache()
+        
+        # Mock circuit breaker returning fallback response
+        fallback_response = {
+            "error": "service_unavailable",
+            "message": "Service temporarily unavailable"
+        }
+        
+        with patch.object(cb_manager, 'execute_with_circuit_breaker', new_callable=AsyncMock) as mock_execute:
+            mock_execute.return_value = fallback_response
+            
+            with patch('time.time', return_value=1000.0):
+                response = await router.route_request(mock_request, "/test_api/users")
+                
+                assert isinstance(response, Response)
+                assert response.status_code == 503
+                assert "X-Response-Time" in response.headers
+                assert "X-Endpoint-ID" in response.headers
+                
+                # Verify circuit breaker was used
+                mock_execute.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_route_request_endpoint_not_found(self, registry, mock_request):
@@ -525,4 +608,252 @@ class TestRequestRouter:
         
         with patch.object(router.proxy, 'close', new_callable=AsyncMock) as mock_close:
             await router.cleanup()
-            mock_close.assert_called_once() 
+            mock_close.assert_called_once()
+            
+    def test_http_client_reuse(self, registry):
+        """Test that HTTP client is reused across requests."""
+        router = RequestRouter(registry)
+        
+        # The same client instance should be used for all requests
+        client1 = router.proxy.client
+        client2 = router.proxy.client
+        
+        assert client1 is client2  # Same instance
+        assert isinstance(client1, httpx.AsyncClient)
+        
+    def test_router_proxy_consolidation(self, registry):
+        """Test that router uses a single consolidated proxy."""
+        router = RequestRouter(registry)
+        
+        # Router should have exactly one proxy instance
+        assert router.proxy is not None
+        assert isinstance(router.proxy, EndpointProxy)
+        
+        # Proxy should have exactly one HTTP client
+        assert router.proxy.client is not None
+        assert isinstance(router.proxy.client, httpx.AsyncClient)
+        
+        # Multiple calls should return the same proxy
+        proxy1 = router.proxy
+        proxy2 = router.proxy
+        assert proxy1 is proxy2
+        
+    def test_route_cache_performance(self, registry):
+        """Test route cache improves lookup performance."""
+        router = RequestRouter(registry)
+        
+        # Register multiple endpoints
+        endpoints = []
+        for i in range(100):
+            config = EndpointConfig(
+                url=f"https://api{i}.example.com",
+                name=f"api_{i}",
+                version="v1",
+                methods=[HTTPMethod.GET]
+            )
+            endpoint = registry.register_endpoint(config)
+            endpoints.append(endpoint)
+        
+        # Update cache
+        router._update_cache()
+        
+        # Cache should have entries for all endpoints
+        assert len(router.route_cache) >= len(endpoints)
+        
+        # Lookups should be fast (O(1) for cache hits)
+        import time
+        
+        # Time cache lookup
+        start_time = time.time()
+        for i in range(100):
+            result = router._find_endpoint_for_path(f"/api_{i}")
+            assert result is not None
+        cache_time = time.time() - start_time
+        
+        # Cache lookup should be very fast
+        assert cache_time < 0.1  # Should complete in under 100ms
+        
+    def test_route_cache_update_efficiency(self, registry):
+        """Test that route cache updates efficiently."""
+        router = RequestRouter(registry)
+        
+        # Initial cache
+        initial_cache_size = len(router.route_cache)
+        
+        # Add many endpoints
+        import time
+        start_time = time.time()
+        
+        for i in range(50):
+            config = EndpointConfig(
+                url=f"https://api{i}.example.com",
+                name=f"api_{i}",
+                methods=[HTTPMethod.GET]
+            )
+            registry.register_endpoint(config)
+        
+        # Update cache
+        router._update_cache()
+        update_time = time.time() - start_time
+        
+        # Cache should be updated efficiently
+        assert update_time < 0.5  # Should complete in under 500ms
+        assert len(router.route_cache) > initial_cache_size
+        
+    def test_route_cache_memory_usage(self, registry):
+        """Test that route cache doesn't grow unbounded."""
+        router = RequestRouter(registry)
+        
+        # Add many endpoints
+        for i in range(200):
+            config = EndpointConfig(
+                url=f"https://api{i}.example.com",
+                name=f"api_{i}",
+                methods=[HTTPMethod.GET]
+            )
+            registry.register_endpoint(config)
+        
+        router._update_cache()
+        
+        # Cache should only contain active endpoints
+        all_endpoints = registry.list_endpoints(include_disabled=False)
+        
+        # Each endpoint can have 1-2 cache entries (name + versioned)
+        max_expected_cache_size = len(all_endpoints) * 2
+        
+        assert len(router.route_cache) <= max_expected_cache_size
+        
+    def test_route_cache_invalidation(self, registry, sample_endpoint_config):
+        """Test that route cache is properly invalidated."""
+        router = RequestRouter(registry)
+        
+        # Register endpoint
+        endpoint = registry.register_endpoint(sample_endpoint_config)
+        router._update_cache()
+        
+        # Should be in cache
+        assert "/test_api" in router.route_cache
+        
+        # Remove endpoint
+        registry.unregister_endpoint(endpoint.endpoint_id)
+        router._update_cache()
+        
+        # Should no longer be in cache
+        assert "/test_api" not in router.route_cache
+        
+    def test_route_cache_edge_cases(self, registry):
+        """Test route cache handles edge cases properly."""
+        router = RequestRouter(registry)
+        
+        # Test with endpoint without name
+        config_no_name = EndpointConfig(
+            url="https://api.example.com",
+            methods=[HTTPMethod.GET]
+        )
+        endpoint_no_name = registry.register_endpoint(config_no_name)
+        
+        # Test with endpoint with valid special characters in name
+        config_special = EndpointConfig(
+            url="https://special.example.com",
+            name="api_with-special_chars",
+            methods=[HTTPMethod.GET]
+        )
+        endpoint_special = registry.register_endpoint(config_special)
+        
+        router._update_cache()
+        
+        # Endpoint without name should not be in cache
+        assert endpoint_no_name.endpoint_id not in [ep.endpoint_id for ep in router.route_cache.values()]
+        
+        # Endpoint with valid special characters should be in cache
+        assert "/api_with-special_chars" in router.route_cache
+        
+    @pytest.mark.asyncio
+    async def test_http_client_error_handling_edge_cases(self, registry, sample_endpoint_config, mock_request):
+        """Test HTTP client handles edge cases in error scenarios."""
+        router = RequestRouter(registry)
+        endpoint = registry.register_endpoint(sample_endpoint_config)
+        router._update_cache()
+        
+        # Test with different HTTP error scenarios
+        error_scenarios = [
+            (httpx.ConnectTimeout("Connection timeout"), 504),
+            (httpx.ReadTimeout("Read timeout"), 504),
+            (httpx.WriteTimeout("Write timeout"), 504),
+            (httpx.PoolTimeout("Pool timeout"), 504),
+            (httpx.NetworkError("Network error"), 502),
+            (httpx.ProtocolError("Protocol error"), 502),
+            (httpx.DecodingError("Decoding error"), 502),
+            (httpx.TooManyRedirects("Too many redirects"), 502),
+        ]
+        
+        for error, expected_status in error_scenarios:
+            with patch.object(router.proxy.client, 'request', new_callable=AsyncMock) as mock_request_method:
+                mock_request_method.side_effect = error
+                
+                with pytest.raises(HTTPException) as exc_info:
+                    await router.route_request(mock_request, "/test_api")
+                
+                assert exc_info.value.status_code in [expected_status, 502, 504]
+                
+    def test_route_matching_edge_cases(self, registry):
+        """Test route matching handles edge cases."""
+        router = RequestRouter(registry)
+        
+        # Test with various path patterns
+        test_cases = [
+            ("api-name", "/api-name"),
+            ("api_name", "/api_name"),
+            ("api-name2", "/api-name2"),
+            ("api123", "/api123"),
+            ("API", "/API"),
+        ]
+        
+        for name, expected_path in test_cases:
+            config = EndpointConfig(
+                url=f"https://{name}.example.com",
+                name=name,
+                methods=[HTTPMethod.GET]
+            )
+            registry.register_endpoint(config)
+        
+        router._update_cache()
+        
+        # Test that all paths are properly cached
+        for name, expected_path in test_cases:
+            assert expected_path in router.route_cache
+            
+    def test_concurrent_route_cache_access(self, registry, sample_endpoint_config):
+        """Test that route cache handles concurrent access properly."""
+        router = RequestRouter(registry)
+        endpoint = registry.register_endpoint(sample_endpoint_config)
+        router._update_cache()
+        
+        import threading
+        import time
+        
+        results = []
+        
+        def lookup_route():
+            result = router._find_endpoint_for_path("/test_api")
+            results.append(result)
+        
+        # Create multiple threads
+        threads = []
+        for _ in range(10):
+            thread = threading.Thread(target=lookup_route)
+            threads.append(thread)
+        
+        # Start all threads
+        for thread in threads:
+            thread.start()
+        
+        # Wait for all threads to complete
+        for thread in threads:
+            thread.join()
+        
+        # All lookups should succeed
+        assert len(results) == 10
+        for result in results:
+            assert result is not None
+            assert result.endpoint_id == endpoint.endpoint_id 

@@ -3,6 +3,7 @@ Registry API endpoints for managing endpoint registration.
 """
 
 import logging
+import time
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
@@ -261,9 +262,11 @@ async def get_registry_stats(
     try:
         stats = registry.get_registry_stats()
         
+        current_time = time.time()
         return {
             "registry_stats": stats,
-            "timestamp": datetime.now()
+            "timestamp": current_time,
+            "timestamp_iso": datetime.fromtimestamp(current_time).isoformat() + 'Z'
         }
         
     except Exception as e:

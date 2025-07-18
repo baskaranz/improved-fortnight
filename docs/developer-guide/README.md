@@ -17,24 +17,37 @@ The Orchestrator API is a **FastAPI-based microservice gateway** built with:
 
 ## 🚀 Quick Development Setup
 
-1. **Clone and setup environment:**
-   ```bash
-   git clone <repository-url>
-   cd yet-another-orch-api
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -e ".[dev]"
-   ```
+### Option 1: Docker Development (Recommended)
 
-2. **Run tests to verify setup:**
-   ```bash
-   pytest
-   ```
+```bash
+git clone <repository-url>
+cd yet-another-orch-api
 
-3. **Start development server:**
-   ```bash
-   python main.py --reload --log-level debug
-   ```
+# Quick setup with hot reload
+make setup
+# OR
+docker-compose --profile dev up -d orchestrator-dev
+```
+
+### Option 2: Python Development
+
+```bash
+git clone <repository-url>
+cd yet-another-orch-api
+python3 -m venv venv
+source venv/bin/activate
+pip install -e ".[dev]"
+```
+
+**Verify setup:**
+```bash
+# Docker
+curl http://localhost:8000/health
+
+# Python  
+pytest
+python main.py --reload --log-level debug
+```
 
 ➡️ **[Complete Development Setup Guide →](development-setup.md)**
 
